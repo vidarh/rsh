@@ -20,12 +20,7 @@ trap("SIGINT") {
   raise CtrlC
 }
 
-def system(command)
-  pid = fork {
-    exec(command)
-  }
-  Process.wait(pid) if pid
-end
+def system(command) = Process.wait(fork { exec(command) })
 
 def filter(command)
   IO.popen(command) do |f|
@@ -71,16 +66,10 @@ def run
     else
       words = input.split(/\s/)
       cmd = words[0]
-      if cmd == '' then nil
-      else
-        # FIXME: Maybe move this to a module.
-        builtin = "builtin_#{cmd}".to_sym
-        if self.respond_to?(builtin)
-          self.send(builtin, *words[1..-1])
-        else
-          #system("grc "+input)
-          system(input)
-        end
+      # FIXME: Maybe move this to a module.
+      builtin = "builtin_#{cmd}".to_sym
+      if self.respond_to?(builtin) then self.send(builtin, *words[1..-1])
+      elsif !input.empty? then system(input)
       end
     end
   end
