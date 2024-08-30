@@ -75,7 +75,7 @@ def run
   end
 rescue CtrlC
   retry
-rescue ArgumentError => e
+rescue Exception => e
   p e
   retry
 end
