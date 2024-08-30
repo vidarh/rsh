@@ -81,7 +81,8 @@ def run
         when  '', nil
         when 'pstree' then filter("pstree -U "+(words[1..-1].join(" ")))
         else
-          system("grc "+input)
+          #system("grc "+input)
+          system(input)
         end
       end
     end
