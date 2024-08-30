@@ -54,12 +54,11 @@ def self.builtin_cd(dir = nil, ...)
   ENV["OLDPWD"] = pwd
 end
 
+def self.builtin_hist(...) = puts Readline::HISTORY.to_a
+def self.builtin_exit(...) = exit(0)
+
 def run
   while input = Readline.readline(prompt, true)
-    break                       if input == "exit"
-    puts Readline::HISTORY.to_a if input == "hist"
-
-    # Remove blank lines from history
     Readline::HISTORY.pop if input == ""
 
     if input[0] == ?:
