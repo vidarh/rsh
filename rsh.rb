@@ -45,8 +45,6 @@ def prompt
   "\e[44m #{pwd} \e[34;48m\uE0B0\e[0m "
 end
 
-def self.builtin_pwd(...) = puts(Dir.pwd)
-  
 def self.builtin_cd(dir = nil, ...)
   pwd = Dir.pwd
   dir = ENV["OLDPWD"] if dir == "-"
@@ -54,8 +52,10 @@ def self.builtin_cd(dir = nil, ...)
   ENV["OLDPWD"] = pwd
 end
 
+def self.builtin_pwd(...) = puts(Dir.pwd)
 def self.builtin_hist(...) = puts Readline::HISTORY.to_a
 def self.builtin_exit(...) = exit(0)
+def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
 
 def run
   while input = Readline.readline(prompt, true)
@@ -71,14 +71,12 @@ def run
     else
       words = input.split(/\s/)
       cmd = words[0]
-      # FIXME: Maybe move this to a module.
-      builtin = "builtin_#{cmd}".to_sym
-      if self.respond_to?(builtin)
-        self.send(builtin, *words[1..-1])
+      if cmd == '' then nil
       else
-        case cmd
-        when  '', nil
-        when 'pstree' then filter("pstree -U "+(words[1..-1].join(" ")))
+        # FIXME: Maybe move this to a module.
+        builtin = "builtin_#{cmd}".to_sym
+        if self.respond_to?(builtin)
+          self.send(builtin, *words[1..-1])
         else
           #system("grc "+input)
           system(input)
