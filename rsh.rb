@@ -3,7 +3,7 @@ require 'readline'
 comp = proc do |s|
   directory_list = Dir.glob("#{s}*")
   if directory_list.size > 0
-    directory_list.map{_1+"/"}
+    directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
   else
     Readline::HISTORY.grep(/^#{Regexp.escape(s)}/)
   end
