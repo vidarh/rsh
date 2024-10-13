@@ -1,6 +1,26 @@
 require 'readline'
 
+begin
+  require 'rouge'
+  require 'rouge/gtk_theme_loader'
+
+  $rouge_theme = Rouge::Theme.find("plasticcodewrap").new # rescue nil
+  $rouge_lexer = Rouge::Lexer.find("sh")
+  $rouge_ruby = Rouge::Lexer.find("ruby")
+  $rouge_formatter = Rouge::Formatters::Terminal256.new($rouge_theme)
+rescue Exception => e
+  p e
+  puts e.backtrace.join(" ")
+end
+
+def format(str, lexer: $rouge_lexer)
+  $rouge_formatter.format(lexer.lex(str))
+end
+
+def colorize(str) = str.gsub(/^(.*?):(\d+):(in\s+.*)/, "\e[36m\\1\e[0m:\e[33m\\2\e[0m:\e[31m\\3\e[0m")
+
 comp = proc do |s|
+  #print "\r"+prompt+format(Readline.line)
   directory_list = Dir.glob("#{s}*")
   if directory_list.size > 0
     directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
@@ -8,9 +28,18 @@ comp = proc do |s|
     Readline::HISTORY.grep(/^#{Regexp.escape(s)}/)
   end
 end
-                      
+
+#rd, wr = IO.pipe
+#if !fork
+#  while ch = rd.getc
+#    $stderr.print(ch.inspect+" ")
+#  end
+#end
+
+#Readline.output = wr
 Readline.completion_append_character = ""
 Readline.completion_proc = comp
+
 
 class CtrlC < StandardError
 end
@@ -20,7 +49,19 @@ trap("SIGINT") {
   raise CtrlC
 }
 
-def system(command) = Process.wait(fork { exec(command) })
+def system(command)
+  pid = fork do
+    begin
+      exec(command)
+    rescue Errno::ENOENT
+      puts "No such command"
+    rescue Exception => e
+      present_exception(e)
+    end
+    exit(0)
+  end
+  Process.wait(pid) if pid
+end
 
 def filter(command)
   IO.popen(command) do |f|
