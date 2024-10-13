@@ -81,6 +81,11 @@ def prompt
   "\e[44m #{pwd} \e[34;48m\uE0B0\e[0m "
 end
 
+def present_exception(e)
+  puts format(e.inspect, lexer: $rouge_ruby)
+  puts e.backtrace.map{colorize(_1)}.join("\n")
+end
+
 def self.builtin_cd(dir = nil, ...)
   pwd = Dir.pwd
   dir = ENV["OLDPWD"] if dir == "-"
@@ -95,14 +100,17 @@ def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
 
 def run
   while input = Readline.readline(prompt, true)
+    # FIXME: Sad hack until we can get at it during completion.
+    print "\033[A\r"+prompt+format(input)+"\n"
+    
     Readline::HISTORY.pop if input == ""
 
     if input[0] == ?:
       begin
         r = eval(input[1..-1])
-        p r if r
+        puts format(r.inspect, lexer: $rouge_ruby) if r
       rescue Exception => e
-        p e
+        puts format(e.inspect, lexer: $rouge_ruby)
       end
     else
       words = input.split(/\s/)
@@ -117,7 +125,7 @@ def run
 rescue CtrlC
   retry
 rescue Exception => e
-  p e
+  present_exception(e)
   retry
 end
 
