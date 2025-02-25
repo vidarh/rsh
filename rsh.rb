@@ -1,4 +1,5 @@
 require 'reline'
+require_relative 'loader'
 
 begin
   require 'rouge'
@@ -17,10 +18,17 @@ def format(str, lexer: $rouge_lexer)
   $rouge_formatter.format(lexer.lex(str))
 end
 
+def smart_format(input)
+  if input[0] == ?:
+    ":" + format(input[1..-1], lexer: $rouge_ruby)
+  else
+    format(input, lexer: $rouge_lexer)
+  end
+end
+
 def colorize(str) = str.gsub(/^(.*?):(\d+):(in\s+.*)/, "\e[36m\\1\e[0m:\e[33m\\2\e[0m:\e[31m\\3\e[0m")
 
 comp = proc do |s|
-  #print "\r"+prompt+format(Readline.line)
   directory_list = Dir.glob("#{s}*")
   if directory_list.size > 0
     terms = directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
@@ -101,7 +109,30 @@ def self.builtin_hist(...) = puts Reline::HISTORY.to_a
 def self.builtin_exit(...) = exit(0)
 def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
 
-def run
+def handle_command(input)
+  words = input.split(/\s/)
+  cmd = words[0]
+
+  if $loader.exists?(cmd)
+    $last = r = $loader.call(cmd, *words[1..-1])
+    if r
+      puts(format(r.inspect, lexer: $rouge_ruby))
+    end
+  else
+    builtin = "builtin_#{cmd}".to_sym
+    if self.respond_to?(builtin) then $last = self.send(builtin, *words[1..-1])
+    elsif !input.empty? then $last = system(input)
+    end
+  end
+end
+
+def run(*args)
+
+  # FIXME: Handle more.
+  if args[0]
+    handle_command(args[0].join)
+  end
+  
   while input = Reline.readline(prompt, true)
     puts "\033[A\r#{prompt}#{smart_format(input)}\033[K\033[J"
     
@@ -115,13 +146,7 @@ def run
         puts format(e.inspect, lexer: $rouge_ruby)
       end
     else
-      words = input.split(/\s/)
-      cmd = words[0]
-      # FIXME: Maybe move this to a module.
-      builtin = "builtin_#{cmd}".to_sym
-      if self.respond_to?(builtin) then self.send(builtin, *words[1..-1])
-      elsif !input.empty? then system(input)
-      end
+      handle_command(input)
     end
   end
 rescue CtrlC
@@ -131,9 +156,13 @@ rescue Exception => e
   retry
 end
 
+$loader = Loader.new(File.join(File.dirname(__FILE__),"commands"))
+$loader.load_commands
+
+
 def reload
   $norun=true
   load(__FILE__)
 end
 
-run unless $norun
+run(ARGV[1..-1]) unless $norun
