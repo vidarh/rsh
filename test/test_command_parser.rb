@@ -95,7 +95,7 @@ class TestCommandParser < Minitest::Test
     result = @parser.parse_input("echo \"escaped \\\"quote\\\"\" 'nested \\'quote\\''")
     assert_equal :custom_command, result[:type]
     assert_equal "echo", result[:command]
-    assert_equal ["escaped \\\"quote\\\"", "nested \\'quote\\'"], result[:args]
+    assert_equal ["escaped \"quote\"", "nested 'quote'"], result[:args]
     @loader.verify
   end
   
@@ -116,5 +116,23 @@ class TestCommandParser < Minitest::Test
     assert_equal "mismatched'", @parser.strip_quotes("mismatched'")
     assert_equal "", @parser.strip_quotes("\"\"")
     assert_equal "", @parser.strip_quotes("''")
+  end
+  
+  def test_parse_escaped_spaces
+    @loader.expect :exists?, true, ["cd"]
+    result = @parser.parse_input("cd This\\ is\\ one\\ argument")
+    assert_equal :custom_command, result[:type]
+    assert_equal "cd", result[:command]
+    assert_equal ["This is one argument"], result[:args]
+    @loader.verify
+  end
+  
+  def test_parse_mixed_escapes_and_quotes
+    @loader.expect :exists?, true, ["echo"]
+    result = @parser.parse_input("echo \"quoted with\\ escape\" not\\ quoted")
+    assert_equal :custom_command, result[:type]
+    assert_equal "echo", result[:command]
+    assert_equal ["quoted with escape", "not quoted"], result[:args]
+    @loader.verify
   end
 end

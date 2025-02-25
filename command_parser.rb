@@ -33,9 +33,20 @@ class CommandParser
     current_token = ""
     in_double_quotes = false
     in_single_quotes = false
+    escaped = false
     
-    input.chars.each do |char|
-      if char == '"' && !in_single_quotes
+    i = 0
+    while i < input.length
+      char = input[i]
+      
+      if escaped
+        # If previous character was a backslash, add current character regardless
+        current_token << char
+        escaped = false
+      elsif char == "\\"
+        # Start of escape sequence, don't add the backslash
+        escaped = true
+      elsif char == '"' && !in_single_quotes
         in_double_quotes = !in_double_quotes
         current_token << char
       elsif char == "'" && !in_double_quotes
@@ -47,6 +58,8 @@ class CommandParser
       else
         current_token << char
       end
+      
+      i += 1
     end
     
     tokens << current_token unless current_token.empty?
