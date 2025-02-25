@@ -86,7 +86,7 @@ class TestCommandParser < Minitest::Test
     result = @parser.parse_input("echo \"hello world\" 'single quoted'")
     assert_equal :custom_command, result[:type]
     assert_equal "echo", result[:command]
-    assert_equal ["\"hello world\"", "'single quoted'"], result[:args]
+    assert_equal ["hello world", "single quoted"], result[:args]
     @loader.verify
   end
   
@@ -95,7 +95,7 @@ class TestCommandParser < Minitest::Test
     result = @parser.parse_input("echo \"escaped \\\"quote\\\"\" 'nested \\'quote\\''")
     assert_equal :custom_command, result[:type]
     assert_equal "echo", result[:command]
-    assert_equal ["\"escaped \\\"quote\\\"\"", "'nested \\'quote\\''"], result[:args]
+    assert_equal ["escaped \\\"quote\\\"", "nested \\'quote\\'"], result[:args]
     @loader.verify
   end
   
@@ -104,7 +104,17 @@ class TestCommandParser < Minitest::Test
     result = @parser.parse_input("echo \"\" '' ")
     assert_equal :custom_command, result[:type]
     assert_equal "echo", result[:command]
-    assert_equal ["\"\"", "''"], result[:args]
+    assert_equal ["", ""], result[:args]
     @loader.verify
+  end
+  
+  def test_strip_quotes
+    assert_equal "hello world", @parser.strip_quotes("\"hello world\"")
+    assert_equal "single quoted", @parser.strip_quotes("'single quoted'")
+    assert_equal "no quotes", @parser.strip_quotes("no quotes")
+    assert_equal "mismatched\"", @parser.strip_quotes("mismatched\"")
+    assert_equal "mismatched'", @parser.strip_quotes("mismatched'")
+    assert_equal "", @parser.strip_quotes("\"\"")
+    assert_equal "", @parser.strip_quotes("''")
   end
 end

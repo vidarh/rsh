@@ -19,7 +19,7 @@ class CommandParser
     # Parse quoted arguments properly
     tokens = tokenize_command(input)
     cmd = tokens[0]
-    args = tokens[1..-1] || []
+    args = (tokens[1..-1] || []).map { |arg| strip_quotes(arg) }
 
     if loader.exists?(cmd)
       { type: :custom_command, command: cmd, args: args }
@@ -51,5 +51,15 @@ class CommandParser
     
     tokens << current_token unless current_token.empty?
     tokens
+  end
+  
+  def strip_quotes(arg)
+    # Strip matching quotes from the beginning and end of a string
+    if (arg.start_with?('"') && arg.end_with?('"')) || 
+       (arg.start_with?("'") && arg.end_with?("'"))
+      arg[1..-2]
+    else
+      arg
+    end
   end
 end
