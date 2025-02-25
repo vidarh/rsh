@@ -1,4 +1,4 @@
-require 'readline'
+require 'reline'
 
 begin
   require 'rouge'
@@ -25,7 +25,7 @@ comp = proc do |s|
   if directory_list.size > 0
     directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
   else
-    Readline::HISTORY.grep(/^#{Regexp.escape(s)}/)
+    terms = Reline::HISTORY.grep(/^#{Regexp.escape(s)}/)
   end
 end
 
@@ -37,9 +37,11 @@ end
 #end
 
 #Readline.output = wr
-Readline.completion_append_character = ""
-Readline.completion_proc = comp
-
+Reline.completion_append_character = ""
+Reline.completion_proc = comp
+Reline.output_modifier_proc = proc do |input, complete:|
+  smart_format(input)
+end
 
 class CtrlC < StandardError
 end
@@ -94,16 +96,15 @@ def self.builtin_cd(dir = nil, ...)
 end
 
 def self.builtin_pwd(...) = puts(Dir.pwd)
-def self.builtin_hist(...) = puts Readline::HISTORY.to_a
+def self.builtin_hist(...) = puts Reline::HISTORY.to_a
 def self.builtin_exit(...) = exit(0)
 def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
 
 def run
-  while input = Readline.readline(prompt, true)
-    # FIXME: Sad hack until we can get at it during completion.
-    print "\033[A\r"+prompt+format(input)+"\n"
+  while input = Reline.readline(prompt, true)
+    puts "\033[A\r#{prompt}#{smart_format(input)}\033[K\033[J"
     
-    Readline::HISTORY.pop if input == ""
+    Reline::HISTORY.pop if input == ""
 
     if input[0] == ?:
       begin
