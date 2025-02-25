@@ -23,10 +23,11 @@ comp = proc do |s|
   #print "\r"+prompt+format(Readline.line)
   directory_list = Dir.glob("#{s}*")
   if directory_list.size > 0
-    directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
+    terms = directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
   else
     terms = Reline::HISTORY.grep(/^#{Regexp.escape(s)}/)
   end
+  terms.map { _1.gsub(" ","\\ ") }
 end
 
 #rd, wr = IO.pipe
