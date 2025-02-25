@@ -23,8 +23,6 @@ class CommandParser
 
     if loader.exists?(cmd)
       { type: :custom_command, command: cmd, args: args }
-    elsif respond_to?("builtin_#{cmd}", true)
-      { type: :builtin, command: cmd, args: args }
     else
       { type: :system, command: input }
     end

@@ -28,16 +28,48 @@ class TestCommandParser < Minitest::Test
     @loader.verify
   end
 
-  def test_parse_builtin_command
-    @loader.expect :exists?, false, ["cd"]
-    def @parser.respond_to?(method_name, include_private = false)
-      method_name.to_s == "builtin_cd" || super
-    end
-    
+  def test_parse_command_cd
+    @loader.expect :exists?, true, ["cd"]
     result = @parser.parse_input("cd /home")
-    assert_equal :builtin, result[:type]
+    assert_equal :custom_command, result[:type]
     assert_equal "cd", result[:command]
     assert_equal ["/home"], result[:args]
+    @loader.verify
+  end
+  
+  def test_parse_command_pwd
+    @loader.expect :exists?, true, ["pwd"]
+    result = @parser.parse_input("pwd")
+    assert_equal :custom_command, result[:type]
+    assert_equal "pwd", result[:command]
+    assert_equal [], result[:args]
+    @loader.verify
+  end
+  
+  def test_parse_command_hist
+    @loader.expect :exists?, true, ["hist"]
+    result = @parser.parse_input("hist")
+    assert_equal :custom_command, result[:type]
+    assert_equal "hist", result[:command]
+    assert_equal [], result[:args]
+    @loader.verify
+  end
+  
+  def test_parse_command_exit
+    @loader.expect :exists?, true, ["exit"]
+    result = @parser.parse_input("exit")
+    assert_equal :custom_command, result[:type]
+    assert_equal "exit", result[:command]
+    assert_equal [], result[:args]
+    @loader.verify
+  end
+  
+  def test_parse_command_pstree
+    @loader.expect :exists?, true, ["pstree"]
+    result = @parser.parse_input("pstree -a")
+    assert_equal :custom_command, result[:type]
+    assert_equal "pstree", result[:command]
+    assert_equal ["-a"], result[:args]
     @loader.verify
   end
 

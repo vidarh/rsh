@@ -98,17 +98,7 @@ def present_exception(e)
   puts e.backtrace.map{colorize(_1)}.join("\n")
 end
 
-def self.builtin_cd(dir = nil, ...)
-  pwd = Dir.pwd
-  dir = ENV["OLDPWD"] if dir == "-"
-  Dir.chdir(dir || ENV["HOME"])
-  ENV["OLDPWD"] = pwd
-end
-
-def self.builtin_pwd(...) = puts(Dir.pwd)
-def self.builtin_hist(...) = puts Reline::HISTORY.to_a
-def self.builtin_exit(...) = exit(0)
-def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
+# Builtin commands moved to commands/ directory
 
 def handle_command(input)
   result = $command_parser.parse_input(input)
@@ -121,9 +111,6 @@ def handle_command(input)
     if r
       puts(format(r.inspect, lexer: $rouge_ruby))
     end
-  when :builtin
-    builtin = "builtin_#{result[:command]}".to_sym
-    $last = self.send(builtin, *result[:args])
   when :system
     $last = system(result[:command])
   end
