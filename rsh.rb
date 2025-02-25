@@ -1,5 +1,6 @@
 require 'reline'
 require_relative 'loader'
+require_relative 'command_parser'
 
 begin
   require 'rouge'
@@ -110,19 +111,21 @@ def self.builtin_exit(...) = exit(0)
 def self.builtin_pstree(*args) = filter("pstree -U"+(args.join(" ")))
 
 def handle_command(input)
-  words = input.split(/\s/)
-  cmd = words[0]
-
-  if $loader.exists?(cmd)
-    $last = r = $loader.call(cmd, *words[1..-1])
+  result = $command_parser.parse_input(input)
+  
+  case result[:type]
+  when :empty
+    return
+  when :custom_command
+    $last = r = $loader.call(result[:command], *result[:args])
     if r
       puts(format(r.inspect, lexer: $rouge_ruby))
     end
-  else
-    builtin = "builtin_#{cmd}".to_sym
-    if self.respond_to?(builtin) then $last = self.send(builtin, *words[1..-1])
-    elsif !input.empty? then $last = system(input)
-    end
+  when :builtin
+    builtin = "builtin_#{result[:command]}".to_sym
+    $last = self.send(builtin, *result[:args])
+  when :system
+    $last = system(result[:command])
   end
 end
 
@@ -138,9 +141,12 @@ def run(*args)
     
     Reline::HISTORY.pop if input == ""
 
-    if input[0] == ?:
+    result = $command_parser.parse_input(input)
+    
+    case result[:type]
+    when :ruby
       begin
-        r = eval(input[1..-1])
+        r = eval(result[:code])
         puts format(r.inspect, lexer: $rouge_ruby) if r
       rescue Exception => e
         puts format(e.inspect, lexer: $rouge_ruby)
@@ -158,6 +164,7 @@ end
 
 $loader = Loader.new(File.join(File.dirname(__FILE__),"commands"))
 $loader.load_commands
+$command_parser = CommandParser.new($loader)
 
 
 def reload
