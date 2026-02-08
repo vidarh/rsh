@@ -1,4 +1,5 @@
 require 'reline'
+require 'fiddle'
 require_relative 'loader'
 require_relative 'command_parser'
 
@@ -61,9 +62,31 @@ trap("SIGINT") {
   raise CtrlC
 }
 
+# Helper to call tcsetpgrp(2) via fiddle for terminal foreground control
+def tcsetpgrp(fd, pgrp)
+  return if !STDIN.isatty  # Only works on terminals
+
+  libc = Fiddle.dlopen(nil)
+  tcsetpgrp_func = Fiddle::Function.new(
+    libc['tcsetpgrp'],
+    [Fiddle::TYPE_INT, Fiddle::TYPE_INT],
+    Fiddle::TYPE_INT
+  )
+
+  tcsetpgrp_func.call(fd, pgrp)
+  # Ignore return value - tcsetpgrp may fail in some environments
+  # (e.g., not a controlling terminal) but we continue anyway
+rescue => e
+  # Silently ignore errors - we may not be in a terminal
+end
+
 def system(command)
+  shell_pgrp = Process.getpgrp
+
   pid = fork do
     begin
+      # Put this process in its own process group so it receives signals independently
+      Process.setpgid(0, 0)
       exec(command)
     rescue Errno::ENOENT
       puts "No such command"
@@ -72,7 +95,31 @@ def system(command)
     end
     exit(0)
   end
-  Process.wait(pid) if pid
+
+  if pid
+    # Set child's process group from parent side (handles race condition)
+    begin
+      Process.setpgid(pid, pid)
+    rescue Errno::ESRCH, Errno::EACCES
+      # Child may have already exec'd or exited
+    end
+
+    # Give foreground control to the child's process group
+    # This allows the child to receive terminal signals (SIGINT from Ctrl-C)
+    # Only works if we're actually in a terminal
+    tcsetpgrp(STDIN.fileno, pid) if STDIN.isatty
+
+    # Temporarily ignore SIGINT in parent while child runs
+    old_trap = trap("SIGINT", "IGNORE")
+    begin
+      Process.wait(pid)
+    ensure
+      # Restore original SIGINT handler
+      trap("SIGINT", old_trap)
+      # Restore foreground control to the shell
+      tcsetpgrp(STDIN.fileno, shell_pgrp) if STDIN.isatty
+    end
+  end
 end
 
 def filter(command)

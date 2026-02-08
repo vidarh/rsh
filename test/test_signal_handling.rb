@@ -49,13 +49,20 @@ class TestSignalHandling < Minitest::Test
         output = read_until_marker(rsh_out, READY_MARKER, 2)
         child_pid = wait_for_pidfile(@pidfile, 2)
 
-        # Send Ctrl-C to the shell process group
-        Process.kill('INT', shell_pid)
+        # Send SIGINT to the child's process group (which should be the foreground group)
+        # The fix makes each child its own process group and gives it foreground control
+        if child_pid
+          child_pgrp = Process.getpgid(child_pid.to_i) rescue child_pid.to_i
+          Process.kill('INT', -child_pgrp)  # Negative PID sends to process group
+        end
         sleep 0.2
 
         # Check if child received SIGINT
         output = read_with_timeout(rsh_out, 1)
         child_received_int = output.include?(INT_MARKER)
+
+        # Give a bit more time for the child to fully exit and be reaped
+        sleep 0.3
 
         # Check if child terminated
         if child_pid
@@ -101,7 +108,11 @@ class TestSignalHandling < Minitest::Test
         # Start command and interrupt it
         rsh_in.write("#{test_cmd}\n")
         read_until_marker(rsh_out, READY_MARKER, 2)
-        Process.kill('INT', shell_pid)
+        child_pid = wait_for_pidfile(@pidfile, 2)
+        if child_pid
+          child_pgrp = Process.getpgid(child_pid.to_i) rescue child_pid.to_i
+          Process.kill('INT', -child_pgrp)
+        end
         read_with_timeout(rsh_out, 1)
 
         # Try to run another command
@@ -142,10 +153,13 @@ class TestSignalHandling < Minitest::Test
         read_until_marker(rsh_out, READY_MARKER, 2)
         child_pid = wait_for_pidfile(@pidfile, 2)
 
-        # Send multiple rapid Ctrl-C signals
-        3.times do
-          Process.kill('INT', shell_pid)
-          sleep 0.05
+        # Send multiple rapid SIGINT to child process group
+        if child_pid
+          child_pgrp = Process.getpgid(child_pid.to_i) rescue child_pid.to_i
+          3.times do
+            Process.kill('INT', -child_pgrp)
+            sleep 0.05
+          end
         end
 
         sleep 0.3
@@ -189,9 +203,13 @@ class TestSignalHandling < Minitest::Test
 
         rsh_in.write("#{custom_trap_cmd}\n")
         read_until_marker(rsh_out, READY_MARKER, 2)
+        child_pid = wait_for_pidfile(@pidfile, 2)
 
-        # Send Ctrl-C
-        Process.kill('INT', shell_pid)
+        # Send SIGINT to child process group
+        if child_pid
+          child_pgrp = Process.getpgid(child_pid.to_i) rescue child_pid.to_i
+          Process.kill('INT', -child_pgrp)
+        end
 
         # Check if child printed its custom handler message
         output = read_with_timeout(rsh_out, 2)
