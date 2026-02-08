@@ -64,8 +64,6 @@ trap("SIGINT") {
 def system(command)
   pid = fork do
     begin
-      # Put this process in its own process group so it receives signals independently
-      Process.setpgid(0, 0)
       exec(command)
     rescue Errno::ENOENT
       puts "No such command"
@@ -74,24 +72,7 @@ def system(command)
     end
     exit(0)
   end
-
-  if pid
-    # Also set from parent side to handle race condition
-    begin
-      Process.setpgid(pid, pid)
-    rescue Errno::ESRCH, Errno::EACCES
-      # Child may have already exec'd or exited
-    end
-
-    # Temporarily ignore SIGINT in parent while child runs
-    old_trap = trap("SIGINT", "IGNORE")
-    begin
-      Process.wait(pid)
-    ensure
-      # Restore original SIGINT handler
-      trap("SIGINT", old_trap)
-    end
-  end
+  Process.wait(pid) if pid
 end
 
 def filter(command)
