@@ -66,8 +66,47 @@ trap("SIGINT") {
   raise CtrlC
 }
 
+require 'fiddle'
+
+# TIOCSPGRP ioctl constant - set foreground process group
+# 0x5410 is the value on Linux
+TIOCSPGRP = 0x5410
+
+def tcsetpgrp(fd, pgrp)
+  libc = Fiddle.dlopen(nil)
+  ioctl = Fiddle::Function.new(
+    libc['ioctl'],
+    [Fiddle::TYPE_INT, Fiddle::TYPE_LONG, Fiddle::TYPE_VOIDP],
+    Fiddle::TYPE_INT
+  )
+
+  pgrp_ptr = Fiddle::Pointer.malloc(Fiddle::SIZEOF_INT)
+  pgrp_ptr[0, Fiddle::SIZEOF_INT] = [pgrp].pack('i')
+
+  result = ioctl.call(fd, TIOCSPGRP, pgrp_ptr)
+  raise SystemCallError.new("tcsetpgrp", Fiddle.last_error) if result == -1
+  result
+end
+
 def system(command)
+  # Check if we're running in a terminal (needed for tcsetpgrp)
+  is_tty = STDIN.tty?
+
+  # Save original signal handlers
+  old_int = trap("INT", "IGNORE")
+  old_ttou = trap("TTOU", "IGNORE") if is_tty
+
+  # Get shell's process group for restoration later
+  shell_pgrp = Process.getpgrp if is_tty
+
   pid = fork do
+    # In child: put ourselves in our own process group (if in a terminal)
+    Process.setpgid(0, 0) if is_tty
+
+    # Restore default signal handlers in child
+    trap("INT", "DEFAULT")
+    trap("TTOU", "DEFAULT") if is_tty
+
     begin
       exec(command)
     rescue Errno::ENOENT
@@ -81,18 +120,43 @@ def system(command)
     end
     exit(0)
   end
-  
+
   if pid
-    Process.wait(pid)
-    status = $?.exitstatus
-    
+    begin
+      if is_tty
+        # In parent: put child in its own process group
+        Process.setpgid(pid, pid)
+
+        # Give terminal foreground control to child's process group
+        tcsetpgrp(STDIN.fileno, pid)
+      end
+
+      # Wait for child to complete
+      Process.wait(pid)
+      status = $?.exitstatus
+    ensure
+      if is_tty
+        # Restore terminal foreground control to shell
+        begin
+          tcsetpgrp(STDIN.fileno, shell_pgrp)
+        rescue => e
+          # If tcsetpgrp fails (e.g., child already exited), continue anyway
+        end
+
+        # Restore original signal handlers
+        trap("TTOU", old_ttou)
+      end
+
+      trap("INT", old_int)
+    end
+
     # Handle different error cases
     case status
     when 127, 126 # Command not found or permission denied
       # Try implicit cd with the first token of the command
       tokens = $command_parser.tokenize_command(command)
       path = tokens[0]
-      
+
       # Only try implicit cd if there's only one token (just a path, no args)
       if tokens.size == 1
         begin

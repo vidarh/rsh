@@ -157,7 +157,7 @@ class TestSignalHandling < Minitest::Test
         if child_pid
           child_pgrp = Process.getpgid(child_pid.to_i) rescue child_pid.to_i
           3.times do
-            Process.kill('INT', -child_pgrp)
+            Process.kill('INT', -child_pgrp) rescue Errno::ESRCH
             sleep 0.05
           end
         end
@@ -339,7 +339,7 @@ class TestSignalHandling < Minitest::Test
     ruby_code = [
       'STDOUT.sync = true',
       'STDERR.sync = true',
-      "path = '#{pidfile}'",
+      "path = \"#{pidfile}\"",  # Use double quotes to avoid quote nesting issues
       'File.write(path, Process.pid.to_s)',
       "puts \"#{ready_marker}\"",
       "trap(\"INT\") { puts \"#{int_marker}\"; exit 130 }",
@@ -355,7 +355,7 @@ class TestSignalHandling < Minitest::Test
   def build_custom_trap_command(pidfile, ready_marker, int_marker)
     ruby_code = [
       'STDOUT.sync = true',
-      "path = '#{pidfile}'",
+      "path = \"#{pidfile}\"",  # Use double quotes to avoid quote nesting issues
       'File.write(path, Process.pid.to_s)',
       "puts \"#{ready_marker}\"",
       "trap(\"INT\") { puts \"#{int_marker}\"; sleep 0.5 }",
