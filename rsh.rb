@@ -1,7 +1,9 @@
 require 'reline'
-require 'fiddle'
 require_relative 'loader'
 require_relative 'command_parser'
+require_relative 'assigns'
+require_relative 'prompt'
+require_relative 'utils/color_codes'
 
 begin
   require 'rouge'
@@ -28,16 +30,13 @@ def smart_format(input)
   end
 end
 
-def colorize(str) = str.gsub(/^(.*?):(\d+):(in\s+.*)/, "\e[36m\\1\e[0m:\e[33m\\2\e[0m:\e[31m\\3\e[0m")
+def autocolorize(str) = str.gsub(/^(.*?):(\d+):(in\s+.*)/, "\e[36m\\1\e[0m:\e[33m\\2\e[0m:\e[31m\\3\e[0m")
 
-comp = proc do |s|
-  directory_list = Dir.glob("#{s}*")
-  if directory_list.size > 0
-    terms = directory_list.map { File.directory?(_1) ? _1 + "/" : _1 }
-  else
-    terms = Reline::HISTORY.grep(/^#{Regexp.escape(s)}/)
-  end
-  terms.map { _1.gsub(" ","\\ ") }
+require_relative 'tabcompleter'
+
+# Reline completion proc
+comp = proc do |s, line, cursor_pos|
+  $tab_completer.generate_completions(s, line, cursor_pos)
 end
 
 #rd, wr = IO.pipe
@@ -48,8 +47,13 @@ end
 #end
 
 #Readline.output = wr
+# Note: Requires Reline 0.2.8+ for line_buffer and point methods
 Reline.completion_append_character = ""
-Reline.completion_proc = comp
+Reline.completion_proc = proc do |s|
+  # Use the new completion with line buffer and cursor position
+  comp.call(s, Reline.line_buffer, Reline.point)
+end
+Reline.completer_quote_characters = %{'"}
 Reline.output_modifier_proc = proc do |input, complete:|
   smart_format(input)
 end
@@ -62,67 +66,63 @@ trap("SIGINT") {
   raise CtrlC
 }
 
-# Helper to call tcsetpgrp(2) via fiddle for terminal foreground control
-def tcsetpgrp(fd, pgrp)
-  return if !STDIN.isatty  # Only works on terminals
-
-  libc = Fiddle.dlopen(nil)
-  tcsetpgrp_func = Fiddle::Function.new(
-    libc['tcsetpgrp'],
-    [Fiddle::TYPE_INT, Fiddle::TYPE_INT],
-    Fiddle::TYPE_INT
-  )
-
-  tcsetpgrp_func.call(fd, pgrp)
-  # Ignore return value - tcsetpgrp may fail in some environments
-  # (e.g., not a controlling terminal) but we continue anyway
-rescue => e
-  # Silently ignore errors - we may not be in a terminal
-end
-
 def system(command)
-  shell_pgrp = Process.getpgrp
-
   pid = fork do
     begin
-      # Put this process in its own process group so it receives signals independently
-      Process.setpgid(0, 0)
       exec(command)
     rescue Errno::ENOENT
-      puts "No such command"
+      # Use exit code 127 to indicate command not found
+      exit(127)
+    rescue Errno::EACCES
+      # Use exit code 126 to indicate permission denied
+      exit(126)
     rescue Exception => e
       present_exception(e)
     end
     exit(0)
   end
-
+  
   if pid
-    # Set child's process group from parent side (handles race condition)
-    begin
-      Process.setpgid(pid, pid)
-    rescue Errno::ESRCH, Errno::EACCES
-      # Child may have already exec'd or exited
-    end
-
-    # Give foreground control to the child's process group
-    # This allows the child to receive terminal signals (SIGINT from Ctrl-C)
-    # Only works if we're actually in a terminal
-    tcsetpgrp(STDIN.fileno, pid) if STDIN.isatty
-
-    # Temporarily ignore SIGINT in parent while child runs
-    old_trap = trap("SIGINT", "IGNORE")
-    begin
-      Process.wait(pid)
-    ensure
-      # Restore original SIGINT handler
-      trap("SIGINT", old_trap)
-      # Restore foreground control to the shell
-      tcsetpgrp(STDIN.fileno, shell_pgrp) if STDIN.isatty
+    Process.wait(pid)
+    status = $?.exitstatus
+    
+    # Handle different error cases
+    case status
+    when 127, 126 # Command not found or permission denied
+      # Try implicit cd with the first token of the command
+      tokens = $command_parser.tokenize_command(command)
+      path = tokens[0]
+      
+      # Only try implicit cd if there's only one token (just a path, no args)
+      if tokens.size == 1
+        begin
+          $loader.call('cd', path)
+          # If cd succeeds, don't show "No such command"
+          return
+        rescue
+          # If cd fails, show the appropriate error
+          if status == 127
+            puts "No such command"
+          else
+            puts "Permission denied - #{path}"
+          end
+        end
+      else
+        # Show the appropriate error for commands with arguments
+        if status == 127
+          puts "No such command"
+        else
+          puts "Permission denied - #{command}"
+        end
+      end
     end
   end
 end
 
-def filter(command)
+# FIXME: This breaks things like re,
+# so perhaps colorizing this way isn't a good general solution.
+# Might do it in the terminal instead.
+def system2(command)
   IO.popen(command) do |f|
     f.each_line do |l|
       l.gsub!(/([\u2500-\u25ff`|+\-]+)/,"\e[32m\\1\e[39m")
@@ -130,19 +130,16 @@ def filter(command)
       print l
     end
   end
+rescue Errno::ENOENT
+  puts "No such command"
+rescue Exception => e
+  present_exception(e)
 end
 
-def prompt
-  pwd = Dir.pwd
-  home = ENV["HOME"]
-  pwd.gsub!(/\A#{home}/,"~")
-  #pwd.gsub!("/"," \uE0B0 ")
-  "\e[44m #{pwd} \e[34;48m\uE0B0\e[0m "
-end
 
 def present_exception(e)
   puts format(e.inspect, lexer: $rouge_ruby)
-  puts e.backtrace.map{colorize(_1)}.join("\n")
+  puts e.backtrace.map{autocolorize(_1)}.join("\n")
 end
 
 # Builtin commands moved to commands/ directory
@@ -199,7 +196,7 @@ end
 $loader = Loader.new(File.join(File.dirname(__FILE__),"commands"))
 $loader.load_commands
 $command_parser = CommandParser.new($loader)
-
+$tab_completer = TabCompleter.new($command_parser)
 
 def reload
   $norun=true
