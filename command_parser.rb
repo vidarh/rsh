@@ -4,6 +4,8 @@ class CommandParser
   def initialize(loader)
     @loader = loader
   end
+  
+  # Make tokenize_command public for use in auto-completion
 
   def parse_input(input)
     return { type: :empty } if input.nil? || input.strip.empty?

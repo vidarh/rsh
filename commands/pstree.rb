@@ -1,5 +1,5 @@
 def call(*args)
-  filter("pstree -U" + (args.join(" ")))
+  filter("pstree -U " + (args.join(" ")))
   nil
 end
 

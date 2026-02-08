@@ -36,7 +36,7 @@ class Loader
     if @commands.key?(name)
       @commands[name].call(*args)
     else
-      puts "Unknown command: #{command_name}"
+      puts "Unknown command: #{name}"
     end
   end
 end
